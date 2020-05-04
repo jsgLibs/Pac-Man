@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+
+
+<!--
+
+    I hope you enjoy my latest and 3rd to smallest game...
+    Khanations!
+    (Khan + Nations. Get it?)
+
+
+    Game apparently dosen't work on Edge
+
+    Bug fixed!!
+
+-->
+
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Khanations [BUG FIXED]</title>
+        <link href='https://fonts.googleapis.com/css?family=Lato' rel='stylesheet'>
+        <link href="https://fonts.googleapis.com/css?family=Indie+Flower" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css?family=Herr+Von+Muellerhoff" rel="stylesheet">
+        <style>
+            body {
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+            }
+            #canvas {
+                background-color: white;
+            }
+        </style>
+    </head>
+    <body>
+    <canvas id="canvas">&gt;canvas&lt; is not supported by your browser.</canvas>
+    <script>
+
+        var keys = {};
+        var keyJustPressed = null;
+        var mouseX = 0;
+        var mouseY = 0;
+
+        var mouseButtons = [];
+        var wheel = 0;
+        var clicked = false;
+        document.addEventListener("keydown", function (event) {
+            keys[event.key] = true;
+            keyJustPressed = event.key;
+        });
+        document.addEventListener("keyup", function (event) {
+            keys[event.key] = false;
+        });
+        
+        document.addEventListener("mousemove", function (event) {
+            mouseX = event.clientX;
+            mouseY = event.clientY;
+        });
+        document.addEventListener("mousedown", function (event) {
+            mouseButtons[event.button] = true;
+        });
+        document.addEventListener("mouseup", function (event) {
+            mouseButtons[event.button] = false;
+        });
+        document.addEventListener("click", function (event) {
+            clicked = true;
+        });
+        document.addEventListener('wheel', function(event) {
+            wheel = event.wheelDeltaY;
+            event.preventDefault();
+        });
+        var frameRate = 60;
+        var SPF = 0;
+        
+        var imageCount = 0;
+        var loadedImageCount = 0;
+        var newImage = function (src) {
+            var img = new Image();
+            img.src = src;
+            img.addEventListener('load', function() {
+                loadedImageCount ++;
+            });
+            imageCount ++;
+            return img;
+        };
+        
+        var images = {};
+        
+        var names = ["aqualine", "duskpin", "leafers", "piceratops", "primosaur", "starky"];
+        var types = ["seed", "seedling", "sapling", "tree", "ultimate"];
+        
+        for(var i = 0; i < names.length; i ++) {
+            images[names[i]] = [];
+            for(var j = 0; j < types.length; j ++) {
+                images[names[i]][j] = newImage("https://www.kasandbox.org/programming-images/avatars/" + names[i] + "-" + types[j] + ".png")
+            }
+        }
+        
+        var inBox = function(mx, my, bx, by, bw, bh) {
+            return mx>=bx&&my>=by&&mx<=bx+bw&&my<=by+bh;
+        }
+        
+        var Timer = function () {
+            this.paused = true;
+            this.reset = function() {
+                this.startTime = performance.now();
+                this.currentTime = 0;
+                this.timeStorage = 0;
+            };
+            this.reset();
+            this.pause = function() {
+                this.paused = true;
+                this.timeStorage = this.currentTime;
+            };
+            this.start = function() {
+                this.paused = false;
+                this.startTime = performance.now();
+            };
+            this.play = function() {
+                this.start();
+            };
+            this.stop = function() {
+                this.pause();
+                this.reset();
+            };
+            this.getTime = function() {
+                if(!this.paused) {
+                    this.currentTime = performance.now() - this.startTime + this.timeStorage;
+                }
+                return this.currentTime / 1000;
+            };
+        };
+        
+        var canvas = document.getElementById("canvas");
+        var width = canvas.width = innerWidth;
+        var height = canvas.height = innerHeight;
+        
+        var g = canvas.getContext("2d");
+        var frameCount = 0;
+        
+        var sq = function (num) {
+            return num * num;
+        }
+        
+        var map = function (x, in_min, in_max, out_min, out_max) {
+            return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+        };
+        
+        var constrain = function(e,t,n){return e>n?n:e<t?t:e;};
+        
+        var inCircle = function (mx, my, cx, cy, cs) {
+            return sq(cx - mx) + sq(cy - my) < sq(cs * 0.5);
+        };
+        
+        var circleCollide = function (c1x, c1y, c1s, c2x, c2y ,c2s) {
+            return sq(c2x - c1x) + sq(c2y - c1y) < sq(c1s + c2s) * 0.25;
+        };
+        
+        var Animator = function (x, y, speed, xTo, yTo) {
+            this.x = x;
+            this.y = y;
+            this.xTo = xTo || x;
+            this.yTo = yTo || y;
+            this.speed = speed;
+            this.done = false;
+            
+            this.update = function () {
+                if (this.x.toFixed(3) === this.xTo.toFixed(3)) {
+                    //this.x = this.xTo;
+                }
+                if (this.y.toFixed(3) === this.yTo.toFixed(3)) {
+                    //this.y = this.yTo;
+                }
+                if (this.x.toFixed(3) === this.xTo.toFixed(3) && this.y.toFixed(3) === this.yTo.toFixed(3)) {
+                    this.done = true;
+                } else {
+                    this.x += (this.xTo - this.x) * this.speed * SPF;
+                    this.y += (this.yTo - this.y) * this.speed * SPF;
+                }
+            }
+        }
+        
+        var MenuButton = function (text, y, height, delay, sceneTo) {
+            this.height = height || 100;
+            this.y = y || innerHeight - this.width;
+            this.text = text;
+            this.delay = delay || 0;
+            
+            this.pos = new Animator(0, -height, 10, 0, this.y);
+            
+            this.sceneTo = sceneTo;
+            
+            this.wait = new Timer();
+            this.wait.start();
+            
+            this.display = function () {
+                if(!this.pos.done && this.wait.getTime() > this.delay) {
+                    this.pos.update();
+                }
+                var mode = 25;
+                var textMode = 40;
+                if (inBox(mouseX, mouseY, 0, this.pos.y, width, this.height)) {
+                    mode += 25;
+                    textMode += 10;
+                    if (mouseButtons[0]) {
+                        mode += 25;
+                    }
+                    if (clicked && !mouseButtons[0]) {
+                        Scene.change(this.sceneTo);
+                    }
+                }
+                g.save();
+                g.fillStyle = "rgba(33, 143, 14, " + mode + "%)";
+                g.beginPath();
+                g.rect(0, this.pos.y, width, this.height);
+                g.fill();
+                
+                g.fillStyle = "black";
+                g.font = textMode + "px lato";
+                g.textAlign = "center";
+                g.textBaseline = "middle";
+                g.fillText(this.text, width * 0.5, this.pos.y + this.height * 0.5);
+                g.restore();
+            };
+        }
+        var Button = function (text, x, y, w, h, action, params, show) {
+            this.text = text;
+            this.x = x;
+            this.y = y;
+            this.width = w;
+            this.height = h;
+            this.action = action;
+            this.params = params;
+            this.show = show;
+            if(this.show === undefined) {
+                this.show = true;
+            }
+            
+            this.display = function () {
+                var mode = 25;
+                var textSize = 0.05;
+                if (inBox(mouseX, mouseY, this.x, this.y, this.width, this.height)) {
+                    mode += 25;
+                    textSize += 0.02;
+                    if (mouseButtons[0]) {
+                        mode += 25;
+                    }
+                    if (clicked && !mouseButtons[0]) {
+                        this.action(this.params);
+                    }
+                }
+                if(this.show) {
+                    g.save();
+                    g.fillStyle = "rgba(33, 143, 14, " + mode + "%)";
+                    g.beginPath();
+                    g.rect(this.x, this.y, this.width, this.height);
+                    g.fill();
+                    
+                    g.fillStyle = "black";
+                    g.font = textSize * innerWidth + "px lato";
+                    g.textAlign = "center";
+                    g.textBaseline = "middle";
+                    g.fillText(this.text, this.x + this.width * 0.5, this.y + this.height * 0.5, this.width, this.height);
+                    g.restore();
+                }
+            };
+        }
+        
+        var scene = "menu";
+        
+        var FloatingAvatar = function(sizeRange, speedRange, spinRange, centerAlign) {
+            this.size = map(Math.random(), 0, 1, sizeRange[0], sizeRange[1]);
+            var speed = map(Math.random(), 0, 1, speedRange[0], speedRange[1]);
+            this.rot = Math.random() * Math.PI * 2;
+            this.rotVel = map(Math.random(), 0, 1, spinRange[0], spinRange[1]);
+            var startingAngle = Math.random() * Math.PI * 2;
+            this.screenRad = (Math.max(width, height) * Math.SQRT2 + this.size * Math.SQRT1_2) * 0.5;
+            this.x = width * 0.5 + Math.cos(startingAngle) * this.screenRad;
+            this.y = height * 0.5 + Math.sin(startingAngle) * this.screenRad;
+            var inAngle = startingAngle + Math.PI + map(Math.random(), 0, 1, -centerAlign, centerAlign);
+            this.xVel = Math.cos(inAngle) * speed;
+            this.yVel = Math.sin(inAngle) * speed;
+            
+            this.imagePath = [names[Math.floor(Math.random() * names.length)], Math.floor(Math.random() * types.length)];
+            
+            this.out = false;
+            
+            this.fromCenter = function() {
+                return sq(this.x - width * 0.5) + sq(this.y - height * 0.5);
+            };
+            
+            this.update = function() {
+                this.x += this.xVel * SPF;
+                this.y += this.yVel * SPF;
+                this.rot += this.rotVel * SPF;
+                if (this.fromCenter() > sq(this.screenRad)) {
+                    this.out = true;
+                }
+            }
+            this.display = function() {
+                this.update();
+                
+                g.save();
+                g.translate(this.x, this.y);
+                g.rotate(this.rot);
+                g.drawImage(images[this.imagePath[0]][this.imagePath[1]], -this.size * 0.5, -this.size * 0.5, this.size, this.size);
+                g.restore();
+            }
+        };
+        
+        var Scene = {
+            change: function(newScene) {
+                if (this.newScene === newScene) { return; }
+                this.newScene = newScene;
+                
+                this.avatar = new FloatingAvatar([width * 4, height * 4], [4000/ 600 * Math.min(innerWidth, innerHeight), 4000 / 600 * Math.min(innerWidth, innerHeight)], [-20, 20], 0);
+                this.avatar.imagePath[1] = 0;
+                this.dist = this.avatar.fromCenter();
+                
+            },
+            display: function() {
+                if(this.avatar !== undefined) {
+                    this.avatar.display();
+                    var centerDist = this.avatar.fromCenter();
+                    if(this.dist - centerDist < 0) {
+                        scene = this.newScene;
+                    }
+                    this.dist = centerDist;
+                    if(this.avatar.out) {
+                        this.avatar = undefined;
+                    }
+                }
+            }
+        };
+        var scenes = {
+            menu: {
+                titleAnimator: new Animator(innerWidth * 0.5, -height / 8, 10, innerWidth * 0.5, height / 8),
+                playButton: new MenuButton("[play]", height / 3, height / 6, 0.125, "start"),
+                howButton: new MenuButton("[how]", height / 3 * 2, height / 6, 0.25, "howto"),
+                bkAvatars: [],
+                display: function() {
+                    this.titleAnimator.update();
+                    g.save();
+                    if(this.bkAvatars.length < 100 * 0.125) {
+                        this.bkAvatars.push(new FloatingAvatar([50, 200], [400, 1600], [-10, 10], 10));
+                    }
+                    if(this.bkAvatars.length < 300 * 0.125) {
+                        this.bkAvatars.push(new FloatingAvatar([50, 200], [100, 400], [-10, 10], 10));
+                    }
+                    if (this.bkAvatars.length < 500 * 0.125) {
+                        this.bkAvatars.push(new FloatingAvatar([50, 200], [25, 100], [-10, 10], 10));
+                    }
+                    for (var i = 0; i < this.bkAvatars.length; i ++) {
+                        if (this.bkAvatars[i].out) {
+                            this.bkAvatars.splice(i, 1);
+                        }
+                    }
+                    for (var i = 0; i < this.bkAvatars.length; i ++) {
+                        this.bkAvatars[i].display();
+                    }
+                    g.restore();
+                    
+                    this.playButton.display();
+                    this.howButton.display();
+                    
+                    g.save();
+                    g.fillStyle = "black";
+                    g.shadowColor = "black";
+                    g.shadowOffsetX = 5; 
+                    g.shadowOffsetY = 5; 
+                    g.shadowBlur = 15;
+                    g.font = "bold " + height / 8 + "px lato";
+                    g.textAlign = "center";
+                    g.textBaseline = "middle";
+                    g.fillText("KHANATIONS", this.titleAnimator.x, this.titleAnimator.y);
+                    g.restore();
+                }
+            },
+            howto: {
+                backButton: new Button("[back]", 0, 550 / 600 * innerHeight, 600 / 600 * innerWidth, 50 / 600 * innerHeight, function () { Scene.change("menu"); }),
+                display: function () {
+                    g.save();
+                    g.fillStyle = "black";
+                    g.shadowColor = "black";
+                    g.shadowOffsetX = 5; 
+                    g.shadowOffsetY = 5; 
+                    g.shadowBlur = 15;
+                    g.font = height / 9 + "px Indie Flower";
+                    g.textAlign = "center";
+                    g.textBaseline = "middle";
+                    g.fillText("[how   to   play]", 300 / 600 * innerWidth, 50 / 600 * innerHeight);
+                    g.restore();
+                    g.save();
+                    g.fillStyle = "black";
+                    g.font = height / 25 + "px Lato";
+                    g.textAlign = "left";
+                    g.textBaseline = "middle";
+                    g.fillText("Goal of the game: Take over all the avatars.", 25 / 600 * innerWidth, 130 / 600 * innerHeight);
+                    g.fillText("This is an avatar:              It's life force can be used to", 25 / 600 * innerWidth, 175 / 600 * innerHeight);
+                    g.fillText("make a projectile that can take another avatar's life", 25 / 600 * innerWidth, 220 / 600 * innerHeight);
+                    g.fillText("away. If you take away all of it's life force, you capture", 25 / 600 * innerWidth, 250 / 600 * innerHeight);
+                    g.fillText("it. Once you control it you can shoot at it to heal it.", 25 / 600 * innerWidth, 280 / 600 * innerHeight);
+                    g.fillText("If \"you over-heal\" it, you can evolve it. The evolutions", 25 / 600 * innerWidth, 310 / 600 * innerHeight);
+                    g.fillText("are more powerful, but your enemy can evolve too.", 25 / 600 * innerWidth, 340 / 600 * innerHeight);
+                    g.fillText("CONTROLS: Click one of your avatars and it will glow", 25, 380 / 600 * innerHeight);
+                    g.fillText("gray. Then click on another avatar. It will glow red.", 25 / 600 * innerWidth, 410 / 600 * innerHeight);
+                    g.fillText("Ctrl-click one of your avatars and it will glow gray.", 25 / 600 * innerWidth, 440 / 600 * innerHeight);
+                    g.fillText("Push space and all the gray glowing avatars will shoot", 25 / 600 * innerWidth, 470 / 600 * innerHeight);
+                    g.fillText("at the red glowing avatars. You can also shoot at your", 25 / 600 * innerWidth, 500 / 600 * innerHeight);
+                    g.fillText("own avatars.       ENJOY!!", 25, 530 / 600 * innerHeight);
+                    scenes.game.drawAvatarBubble([3, 3], 230 / 600 * innerWidth, 175 / 600 * innerHeight, 50 / 600 * innerHeight, 100, 0);
+                    g.restore();
+                    this.backButton.display();
+                }
+            },
+            start: {
+                prop: {side: 0, nums: [3, 0, 3, 3, 0, 0]},
+                numButtons: (function () {
+                    var list = [];
+                    for (var i = 0; i < 6; i ++) {
+                        list.push(new Button(0, 300 / 600 * innerWidth, i * 100 / 600 * innerHeight, 200 / 600 * innerWidth, 100 / 600 * innerHeight, function (i) { scenes.start.prop.side = i }, i));
+                    }
+                    return list;
+                })(),
+                avatarButtons: (function () {
+                    var list = [];
+                    for (var i = 0; i < 6; i ++) {
+                        list.push(new Button(0, 100 / 600 * innerWidth, i * 100 / 600 * innerHeight, 100 / 600 * innerWidth, 100 / 600 * innerHeight, function (i) { scenes.start.prop.side = i }, i, false));
+                    }
+                    return list;
+                })(),
+                plusButtons: (function () {
+                    var list = [];
+                    for (var i = 0; i < 6; i ++) {
+                        list.push(new Button("+", 500 / 600 * innerWidth, i * 100 / 600 * innerHeight, 100 / 600 * innerWidth, 100 / 600 * innerHeight, function (i) { scenes.start.prop.nums[i] = constrain(scenes.start.prop.nums[i] + 1, 0, 20); }, i));
+                    }
+                    return list;
+                })(),
+                minusButtons: (function () {
+                    var list = [];
+                    for (var i = 0; i < 6; i ++) {
+                        list.push(new Button("—", 200 / 600 * innerWidth, i * 100 / 600 * innerHeight, 100 / 600 * innerWidth, 100 / 600 * innerHeight, function (i) {scenes.start.prop.nums[i] = constrain(scenes.start.prop.nums[i] - 1, 0, 20);}, i));
+                    }
+                    return list;
+                })(),
+                startButton: new Button("START", 0, 0, 100 / 600 * innerWidth, 600 / 600 * innerHeight, function () {
+                    scenes.game.start(scenes.start.prop);
+                    Scene.change("game");
+                }),
+                display: function () {
+                    for (var i = 0; i < this.numButtons.length; i ++) {
+                        this.avatarButtons[i].display();
+                    }
+                    for (var i = 0; i < this.numButtons.length; i ++) {
+                        this.numButtons[i].text = this.prop.nums[i];
+                        this.numButtons[i].display();
+                    }
+                    for (var i = 0; i < this.plusButtons.length; i ++) {
+                        this.plusButtons[i].display();
+                    }
+                    for (var i = 0; i < this.minusButtons.length; i ++) {
+                        this.minusButtons[i].display();
+                    }
+                    for (var i = 0; i < this.prop.nums.length; i ++) {
+                        var sel = this.prop.side === i;
+                        scenes.game.drawAvatarBubble([i, 4], 150 / 600 * innerWidth, 50 / 600 * innerHeight + 100 / 600 * innerHeight * i, 75 / 600 * innerHeight, sel ? 100 : 0, sel ? 1 : 0);
+                    }
+                    this.startButton.display();
+                },
+            },
+            game: {
+                selections: [],
+                
+                select: function () {
+                    if (clicked && !mouseButtons[0]) {
+                        for (var i = 0; i < this.world.length; i ++) {
+                            var w = this.world[i];
+                            if (inCircle(mouseX, mouseY, w.x, w.y, w.size)) {
+                                var ps = 0;
+                                for (var i = 0; i < this.world.length; i ++) {
+                                    if (this.world[i].selection === 1) {
+                                        ps ++;
+                                    }
+                                }
+                                if (w.yourTeam) {
+                                    if (keys["Control"] || ps === 0) {
+                                        w.selection = 1;
+                                    } else if (w.selection === 0) {
+                                        w.selection = 2;
+                                    } else {
+                                        w.selection = 0;
+                                    }
+                                } else {
+                                    if (w.selection === 2) {
+                                        w.selection = 0;
+                                    } else {
+                                        w.selection = 2;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (keyJustPressed === " ") {
+                        var targets = [];
+                        for (var i = 0; i < this.world.length; i ++) {
+                            if (this.world[i].selection === 2) {
+                                targets.push(i);
+                            }
+                        }
+                        for (var i = 0; i < this.world.length; i ++) {
+                            var a = this.world[i];
+                            var life = this.world[i].life;
+                            if (a.selection === 1) {
+                                for(var j = 0; j < targets.length; j ++) {
+                                    a.attack(targets[j], Math.min(25, life / targets.length));
+                                }
+                            }
+                        }
+                    }
+                },
+                
+                avatarColors: [
+                    "#8AD4F1",
+                    "#D5A3E8",
+                    "#A4D174",
+                    "#DB3D3C",
+                    "#E8E852",
+                    "#7F747A"
+                ],
+                
+                AvatarBubble: function (x, y, team, lvl, yourTeam, size, id) {
+                    this.x = x;
+                    this.y = y;
+                    this.team = team;
+                    this.lvl = lvl;
+                    this.yourTeam = yourTeam;
+                    this.origSize = size;
+                    this.size = this.origSize;
+                    this.id = id;
+                    
+                    this.lvls = [
+                        {req: 115, life: 150, rcr: 7.5, siz: 1.125},
+                        {req: 190, life: 200, rcr: 10, siz: 1.25},
+                        {req: 315, life: 300, rcr: 15, siz: 1.5},
+                        {req: 540, life: 500, rcr: 25, siz: 2}
+                    ];
+                    this.totalLife = 100;
+                    this.life = 50;
+                    this.rechargeRate = 5;
+                    this.sizeSpeed = 0;
+                    this.visualSize = this.size;
+                    this.vsSpeed = 0;
+                    this.tolvlup = 0;
+                    this.selection = 0;
+                    
+                    this.timer = new Timer();
+                    this.timerLimit = map(Math.random(), 0, 1, 1, 3);
+                    
+                    this.ailvlupmode = [true, false][Math.floor(Math.random() * 2)];
+                    this.ailvluptimer = new Timer();
+                    this.ailvluptimerLimit = map(Math.random(), 0, 1, 15, 40);
+                    
+                    this.sendProjectile = function(power, target) {
+                        var rad = this.size * 0.5 + map(power, 0, 100, 0, scenes.game.cirSize);
+                        var angle = Math.random() * Math.PI * 2;
+                        var posX = this.x + Math.cos(angle) * rad;
+                        var posY = this.y + Math.sin(angle) * rad;
+                        
+                        scenes.game.projectiles.push(new scenes.game.Projectile(posX, posY, power, target, this.team, angle, map(this.lvl, 0, 5, scenes.game.cirSize * 0.003, scenes.game.cirSize * 0.006)));
+                    };
+                    
+                    this.attack = function (target, attack) {
+                        if (attack === undefined) {
+                            attack = 25;
+                        }
+                        
+                        this.life -= attack;
+                        
+                        if(this.life < 0) {
+                            attack = Math.max(this.life + attack, 0);
+                            this.life = 0;
+                        }
+                        
+                        if(attack > 10) {
+                            this.sendProjectile(attack, target);
+                        }
+                    };
+                    
+                    this.update = function () {
+                        this.yourTeam = this.team === scenes.game.yourSide;
+                        if(this.selection === 1 && !this.yourTeam) {
+                            this.selection = 0;
+                        }
+                        if (!this.yourTeam) {
+                            if (this.timer.paused) {
+                                this.timer.start();
+                            }
+                            
+                            if (this.ailvluptimer.paused) {
+                                this.ailvluptimer.start();
+                            }
+                            if (this.ailvluptimer.getTime() > this.ailvluptimerLimit) {
+                                this.ailvluptimer.reset();
+                                this.ailvlupmode = !this.ailvlupmode;
+                                this.ailvluptimerLimit = map(Math.random(), 0, 1, 15, 40);
+                            }
+                            
+                            if (this.timer.getTime() > this.timerLimit && this.life > this.totalLife * 0.5 && !this.ailvlupmode) {
+                                this.timer.reset();
+                                this.timerLimit = map(Math.random(), 0, 1, 1, 3);
+                                var len = scenes.game.world.length;
+                                var num = Math.floor(Math.random() * len);
+                                if(num === this.id) {
+                                    num = (num + 1) % len;
+                                }
+                                for (var i = 0; i < Math.max(1, this.lvl); i ++) {
+                                    this.attack(num);
+                                }
+                            }
+                        }
+                        if (this.life > this.totalLife) {
+                            this.tolvlup += this.life - this.totalLife;
+                            this.life = this.totalLife;
+                        }
+                        
+                        this.life = Math.min(this.totalLife, this.life + this.rechargeRate * SPF);
+                        
+                        if (this.lvls.length > 0 && this.tolvlup > this.lvls[0].req - this.totalLife) {
+                            this.tolvlup = 0;
+                            this.lvl ++;
+                            var l = this.lvls.shift();
+                            this.totalLife = l.life;
+                            this.rechargeRate = l.rcr;
+                            this.size = this.origSize * l.siz;
+                        }
+                        this.vsSpeed += (this.visualSize - this.size) * SPF;
+                        this.vsSpeed *= (1 - SPF * 5);
+                        this.visualSize -= this.vsSpeed;
+                        
+                        var vsStop = Math.abs(this.vsSpeed) < 0.0001;
+                        
+                        if (vsStop) {
+                            this.vsSpeed = 0;
+                            this.visualSize = this.size;
+                        }
+                    };
+                    this.display = function () {
+                        this.update();
+                        
+                        scenes.game.drawAvatarBubble([this.team, this.lvl], this.x, this.y, this.visualSize, this.life / this.totalLife, this.selection);
+                    };
+                    
+                },
+                
+                Projectile: function (x, y, size, target, team, startAngle, startSpeed) {
+                    this.x = x;
+                    this.y = y;
+                    this.size = map(size, 0, 100, 0, scenes.game.cirSize);
+                    this.power = size;
+                    this.target = target;
+                    this.team = team;
+                    this.startAngle = startAngle;
+                    this.startSpeed = startSpeed * SPF * 150;
+                    this.xVel = Math.cos(this.startAngle) * this.startSpeed;
+                    this.yVel = Math.sin(this.startAngle) * this.startSpeed;
+                    
+                    this.hit = false;
+                    
+                    this.update = function () {
+                        var t = scenes.game.world[target];
+                        this.angle = Math.atan2((this.y - t.y), (this.x - t.x));
+                        
+                        this.speed = 0.05 * Math.sqrt(scenes.game.cirSize) * 100 * SPF * this.size * t.size / (sq(t.y - this.y) + sq(t.x - this.x));
+                        
+                        this.xVel += Math.cos(Math.PI + this.angle) * this.speed * SPF * 100;
+                        this.yVel += Math.sin(Math.PI + this.angle) * this.speed * SPF * 100;
+                        this.xVel *= (1 - SPF * 1);
+                        this.yVel *= (1 - SPF * 1);
+                        
+                        this.x += -0.05 * Math.cos(this.angle) * SPF * scenes.game.cirSize * 3 + this.xVel;
+                        this.y += -0.05 * Math.sin(this.angle) * SPF * scenes.game.cirSize * 3 + this.yVel;
+                        
+                        if (circleCollide(this.x, this.y, this.size, t.x, t.y, t.size) && !this.hit) {
+                            this.hit = true;
+                            if (t.team !== this.team) {
+                                var s = this.power - t.life;
+                                t.life -= this.power;
+                                scenes.game.vibrate += this.power * scenes.game.cirSize * 0.01;
+                                if (t.life < 0) {
+                                    t.vsSpeed = (t.vsSpeed + 1) * 0.02 * scenes.game.cirSize;
+                                    t.team = this.team;
+                                    t.life = s;
+                                }
+                            } else {
+                                if (t.lvl < 4 || t.life < t.totalLife) {
+                                    t.vsSpeed = (t.vsSpeed + 1) * 0.02 * scenes.game.cirSize;
+                                }
+                                t.life += this.power;
+                            }
+                        }
+                    };
+                    
+                    this.display = function () {
+                        this.update();
+                        
+                        if(!this.hit) {
+                            g.save();
+                            g.fillStyle = scenes.game.avatarColors[this.team];
+                            g.beginPath();
+                            g.arc(this.x, this.y, this.size * 0.5, 0, Math.PI * 2);
+                            g.fill();
+                            g.restore();
+                        }
+                    }
+                },
+                
+                projectiles: [],
+                
+                start: function (att) {
+                    this.fade = 0;
+                    this.projectiles = [];
+                    this.cirSize = constrain(
+                        (width + height) * 0.5 / att.nums.reduce(function (a, b) { return a + b; }),
+                        5,
+                        0.05 * (width + height));
+                    
+                    for (var m = 0; m < 1000; m ++) {
+                    
+                        this.world = [];
+                        this.yourSide = att.side;
+                    
+                        for (var i = 0; i < att.nums.length; i ++) {
+                            for (var j = 0; j < att.nums[i]; j ++) {
+                                var x, y, n;
+                                
+                                for (var k = 0; k < 1000; k ++) {
+                                    x = map(Math.random(), 0, 1, this.cirSize, width - this.cirSize * 2),
+                                    y = map(Math.random(), 0, 1, this.cirSize, height - this.cirSize * 2),
+                                    n = false;
+                                    
+                                    for (var l = 0; l < this.world.length; l ++) {
+                                        if (circleCollide(x, y, this.cirSize * 2, this.world[l].x, this.world[l].y, this.world[l].size * 2)) {
+                                            n = true;
+                                        }
+                                    }
+                                    if (n) { continue; }
+                                    break;
+                                }
+                                this.world.push(new this.AvatarBubble(
+                                    x,
+                                    y,
+                                    i,
+                                    0,
+                                    (this.yourSide === i),
+                                    this.cirSize,
+                                    this.world.length
+                                ));
+                            }
+                        }
+                        
+                        var n = false;
+                        
+                        for (var i = 0; i < this.world.length; i ++) {
+                            for (var j = 0; j < this.world.length; j ++) {
+                                if(j === i) { continue; }
+                                
+                                if(circleCollide(this.world[j].x, this.world[j].y, this.world[j].size * 2, this.world[i].x, this.world[i].y, this.world[i].size * 2)) {
+                                    n = true;
+                                }
+                            }
+                        }
+                        
+                        if (n) { continue; }
+                        
+                        break;
+                    }
+                },
+                
+                drawAvatarBubble: function (avatar, x, y, size, percent, selected) {
+                    var magicNumber = [1.35, 0.85, 0.80, 0.82, 0.80][avatar[1]];
+                    var imgSize = size * magicNumber;
+                    size *= 0.5;
+                    var angle = Math.acos(map(percent, 0, 1, -1, 1));
+                    
+                    g.save();
+                    g.lineWidth = 0.05 * size;
+                    g.strokeStyle = "#00000030";
+                    g.beginPath();
+                    g.arc(x, y, Math.max(0, size), 0, Math.PI * 2)
+                    g.stroke();
+                    g.globalAlpha = 0.5;
+                    var r = g.createRadialGradient(x, y, Math.max(0, size), x, y, Math.max(0, size * 1.25));
+                    
+                    switch (selected) {
+                        case 0:
+                            r.addColorStop(0, "#00000000");
+                            r.addColorStop(1, "#00000000");
+                            break;
+                            
+                        case 1:
+                            r.addColorStop(0, "#656565");
+                            r.addColorStop(1, "#00000000");
+                            break;
+                            
+                        case 2:
+                            r.addColorStop(0, "#FF0000");
+                            r.addColorStop(1, "#FF000000");
+                            break;
+                    }
+                    g.fillStyle = r;
+                    g.beginPath();
+                    g.arc(x, y, Math.max(0, size * 1.25), 0, Math.PI * 2);
+                    g.fill();
+                    r = g.createRadialGradient(x, y, 0, x, y, Math.max(0, size));
+                    r.addColorStop(0.2, this.avatarColors[avatar[0]] + "50");
+                    r.addColorStop(1, this.avatarColors[avatar[0]]);
+                    
+                    
+                    g.fillStyle = r;
+                    g.beginPath();
+                    g.arc(x, y, Math.max(0, size - 0.025 * size), (percent >= 1 ? 0 : angle + Math.PI * 1.5), (percent >= 1 ? Math.PI * 2 : -angle + Math.PI * 1.5))
+                    g.fill();
+                    g.fillStyle = "#DDDDDD";
+                    g.beginPath();
+                    if(percent < 1) {
+                        g.arc(x, y, Math.max(0, size - 0.025 * size), -angle + Math.PI * 1.5, angle + Math.PI * 1.5)
+                    }
+                    g.fill();
+                    
+                    var d = size - imgSize * 0.5;
+                
+                    percent = (Math.min(Math.max(percent * size * 2, d), size * 2 - d) - d) / imgSize;
+                    
+                    g.restore();
+                    g.save();
+                    g.drawImage(
+                        images[names[avatar[0]]][avatar[1]],
+                        0,
+                        128 * (1 - percent),
+                        128,
+                        128 * percent,
+                        x - imgSize * 0.5,
+                        y - imgSize * 0.5 + imgSize * (1 - percent),
+                        imgSize,
+                        imgSize * percent
+                    );
+                    g.filter = "grayscale(100%) contrast(25%)";
+                    g.drawImage(
+                        images[names[avatar[0]]][avatar[1]],
+                        0,
+                        0,
+                        128,
+                        128 * (1 - percent),
+                        x - imgSize * 0.5,
+                        y - imgSize * 0.5,
+                        imgSize,
+                        imgSize * (1 - percent)
+                    );
+                    g.restore();
+                },
+                
+                backButton: new Button("[back]", 0, 0, width * 0.167, height * 0.1, function() {Scene.change("menu")}),
+                
+                
+                
+                winLose: function(title, fade) {
+                    if(fade >= 1.5) {
+                        this.fadeOn = false;
+                        Scene.change("menu");
+                    }
+                    
+                    g.save();
+                    g.globalAlpha = fade;
+                    g.fillStyle = "#000000";
+                    g.beginPath();
+                    g.rect(0, 0, innerWidth, innerHeight);
+                    g.fill();
+                    g.fillStyle = "white";
+                    g.font = 1 / 6 * innerWidth + "px Herr Von Muellerhoff";
+                    g.textAlign = "center";
+                    g.textBaseline = "middle";
+                    g.fillText(title, innerWidth * 0.5, innerHeight * 0.5);
+                    g.restore();
+                },
+                
+                fade: 0,
+                fadeOn: false,
+                endMessage: "",
+                
+                vibrate: 0,
+                display: function () {
+                    this.select();
+                    var win = true;
+                    var lose = true;
+                    for (var i = 0; i < this.world.length; i ++) {
+                        if (this.world[i].team === this.yourSide) {
+                            lose = false;
+                        }
+                        if (this.world[i].team !== this.yourSide) {
+                            win = false;
+                        }
+                    }
+                    for (var i = 0; i < this.projectiles.length; i ++) {
+                        if (this.projectiles[i].team === this.yourSide) {
+                            lose = false;
+                        }
+                        if (this.projectiles[i].team !== this.yourSide) {
+                            win = false;
+                        }
+                    }
+                    
+                    if(win || lose) {
+                        this.fadeOn = true;
+                        
+                        if (win) {
+                            this.endMessage = "¡YOU  WIN!";
+                        }
+                        
+                        if (lose) {
+                            this.endMessage = "you  lose . . .";
+                        }
+                    }
+                    
+                    if (this.fadeOn) {
+                        this.fade += SPF * 0.5;
+                    }
+                    
+                    g.save();
+                    g.translate(Math.random() * this.vibrate - this.vibrate * 0.5, Math.random() * this.vibrate - this.vibrate * 0.5);
+                    var noVibrate = this.vibrate < 0.001;
+                    if (noVibrate) {
+                        this.vibrate = 0;
+                    } else {
+                        this.vibrate *= 1 - (SPF * 5);
+                    }
+                    
+                    for (var i = 0; i < this.world.length; i ++) {
+                        this.world[i].display();
+                    }
+                    
+                    for (var i = 0; i < this.projectiles.length; i ++) {
+                        if (this.projectiles[i].hit) {
+                            this.projectiles.splice(i, 1);
+                        }
+                    }
+                    for (var i = 0; i < this.projectiles.length; i ++) {
+                        this.projectiles[i].display();
+                    }
+                    
+                    g.restore();
+                    
+                    this.backButton.display();
+                    
+                    this.winLose(this.endMessage, this.fade);
+                }
+            }
+        };
+        
+        scenes.game.start({side: 3, nums: [0, 1, 1, 4, 0, 1]});
+        
+        var msPerF = 0;
+        var msTracker = 0;
+        msTracker = performance.now();
+        
+        var draw = function() {
+            frameRate = 1000 / (performance.now() - msTracker);
+            SPF = 1 / frameRate;
+            msTracker = performance.now();
+            if(loadedImageCount < imageCount) {
+                document.body.style.cursor = "wait";
+                return;
+            }
+            document.body.style.cursor = "default";
+            frameCount ++;
+            g.save();
+            g.clearRect(0, 0, width, height);
+            scenes[scene].display();
+            Scene.display();
+            g.restore();
+            
+            clicked = false;
+            keyJustPressed = null;
+        };
+        
+        var looper;
+        clearInterval(looper);
+        looper = setInterval(draw, 0);
+        
+    </script>
+    </body>
+</html>
