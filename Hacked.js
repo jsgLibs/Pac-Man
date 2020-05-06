@@ -449,7 +449,7 @@
     k(m, "Chrome") && k(m, "Mobile") && k(m, "wv");
     0 <= m.indexOf("MSIE") && m.indexOf("MSIE 8.");
     k(m, "GT-I9300") && k(m, "Chrome");
-    k(ya, "/logos/") && k(ya, ".html");
+    k(ya, "https://www.google.com/logos/") && k(ya, ".html");
     var Ca = ["", "moz", "ms", "o", "webkit"]
       , Da = function(a) {
         var b = document;
@@ -1191,8 +1191,8 @@
     };
     pa(w, Nb);
     var u = {
-        Xa: new Vb("/logos/2010/","pacman10_regular"),
-        Ra: new Vb("/logos/2010/","pacman10_looped")
+        Xa: new Vb("https://www.google.com/logos/2010/","pacman10_regular"),
+        Ra: new Vb("https://www.google.com/logos/2010/","pacman10_looped")
     }
       , v = {
         Hb: new p(u.Ra,0,402.313),
@@ -1243,7 +1243,7 @@
     }, Ed = [0, 7, 17, 32], Fd = [{
         x: 5,
         y: 1,
-        S: 5
+        S: 56
     }, {
         x: 5,
         y: 4,
@@ -4197,7 +4197,7 @@
             L.tabIndex = 0;
             L.focus();
             ud && (O = document.createElement("div"),
-            O.style.background = "url(/logos/pacman10-hp-sprite-3.png) 38px 18px no-repeat",
+            O.style.background = "url(https://www.google.com/logos/pacman10-hp-sprite-3.png) 38px 18px no-repeat",
             O.style.position = "absolute",
             O.style.right = "0",
             O.style.top = "0",
@@ -4272,7 +4272,7 @@
     qd = document.createElement("img");
     var Ne = -1 != navigator.userAgent.indexOf("MSIE");
     Ne || (qd.onload = Le);
-    qd.src = "/logos/pacman10-hp-sprite-3.png";
+    qd.src = "https://www.google.com/logos/pacman10-hp-sprite-3.png";
     Ne && Le();
     0 == function() {
         if (window.localStorage) {
